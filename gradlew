@@ -1,4 +1,4 @@
-git rm -r --cached .#!/bin/sh
+#!/bin/sh
 
 #
 # Copyright © 2015 the original authors.
