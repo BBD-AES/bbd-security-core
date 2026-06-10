@@ -1,6 +1,7 @@
 package com.bbd.securitycore.config;
 
 import com.bbd.securitycore.adapter.in.security.SpringSecurityAuthenticatedUserAdapter;
+import com.bbd.securitycore.adapter.out.http.SecurityContextAccessTokenRelayInterceptor;
 import com.bbd.securitycore.adapter.out.http.UserServiceSnapshotAdapter;
 import com.bbd.securitycore.adapter.out.http.UserSnapshotHttpClient;
 import com.bbd.securitycore.adapter.out.redis.RedisUserSnapshotCacheAdapter;
@@ -31,6 +32,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.client.support.RestClientHttpServiceGroupConfigurer;
 import org.springframework.web.service.registry.ImportHttpServices;
 import tools.jackson.databind.ObjectMapper;
 
@@ -209,6 +211,37 @@ public class BbdSecurityAutoConfiguration {
     ) {
         return new RedisUserSnapshotCacheAdapter(redisTemplate, properties);
     }
+
+
+    /*
+    HTTP Service Interface 기반 내부 호출에 Access Token Relay 설정을 적용한다.
+
+    @ImportHttpServices로 등록되는 모든 HTTP Service group의
+    RestClient.Builder에 interceptor를 추가한다.
+
+    내부 HTTP 호출 시 현재 요청의 SecurityContext에서 Jwt access token을 꺼내
+    Authorization: Bearer <access-token> 헤더로 전달한다.
+
+    예:
+    - Item Service -> Sales Service
+    - Procurement Service -> Item Service
+    - Inventory Service -> User Service
+    - 각 MSA -> User Service Snapshot 조회
+
+    즉, Gateway를 거치지 않는 MSA 내부 HTTP 통신에서도
+    호출받는 MSA가 동일한 access token을 검증할 수 있게 한다.
+    */
+    @Bean
+    @ConditionalOnMissingBean(name = "bbdAccessTokenRelayHttpServiceGroupConfigurer")
+    public RestClientHttpServiceGroupConfigurer bbdAccessTokenRelayHttpServiceGroupConfigurer() {
+        return groups -> groups
+                .forEachClient((group, clientBuilder) -> clientBuilder
+                        .requestInterceptors(interceptors ->
+                                interceptors.add(new SecurityContextAccessTokenRelayInterceptor())
+                        )
+                );
+    }
+
 
     /*
    User Service에서 UserSnapshot을 조회하는 HTTP adapter를 등록한다.
