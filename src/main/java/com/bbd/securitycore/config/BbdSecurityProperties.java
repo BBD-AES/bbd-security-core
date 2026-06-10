@@ -7,38 +7,30 @@ import org.springframework.boot.context.properties.ConfigurationProperties;
 import java.util.List;
 
 /*
- bbd-security-core의 공통 보안 설정 값을 받는 properties 클래스.
- 각 MSA는 application.yml에서 bbd.security.* 설정을 통해
- 공통 보안 설정을 조정할 수 있다.
- */
+bbd-security-core의 공통 보안 설정 값을 받는 properties 클래스.
+
+각 MSA는 application.yml에서 bbd.security.* 설정을 통해
+공통 보안 설정을 조정할 수 있다.
+
+User Service HTTP 호출의 base-url은
+Spring HTTP Service group 설정에서 관리한다.
+
+예:
+spring:
+http:
+service:
+groups:
+bbd-user-service:
+base-url: http://bbd-user:8080
+*/
 @Setter
 @Getter
 @ConfigurationProperties(prefix = "bbd.security")
 public class BbdSecurityProperties {
 
     /*
-    UserSnapshot을 조회할 User Service의 base URL.
-    Docker Compose 환경 예:
-    http://bbd-user:8080
-
-    로컬 환경 예:
-    http://localhost:8081
-    */
-    private String userServiceBaseUrl;
-
-    /*
-     User Service의 UserSnapshot 조회 API 경로.
-
-     {keycloakSub}는 실제 Keycloak sub 값으로 치환된다.
-
-     예:
-     /internal/users/snapshot/{keycloakSub}
-     */
-    private String userSnapshotPath = "/internal/users/snapshot/{keycloakSub}";
-
-    
-    /*
      bbd-security-core의 기본 SecurityFilterChain 자동 등록 여부.
+
      true이면 공통 Resource Server 보안 설정을 자동 등록한다.
      false이면 각 MSA가 직접 SecurityFilterChain을 구성해야 한다.
      */
@@ -72,11 +64,11 @@ public class BbdSecurityProperties {
     );
 
     /*
-    UserSnapshot Redis 캐시 key prefix.
+     UserSnapshot Redis 캐시 key prefix.
 
-    실제 Redis key 예:
-    user:snapshot:{keycloakSub}
-    */
+     실제 Redis key 예:
+     user:snapshot:{keycloakSub}
+     */
     private String userSnapshotCacheKeyPrefix = "user:snapshot:";
 
     /*
@@ -88,4 +80,5 @@ public class BbdSecurityProperties {
      너무 짧으면 User Service 호출이 많아진다.
      */
     private long userSnapshotCacheTtlSeconds = 300;
+
 }

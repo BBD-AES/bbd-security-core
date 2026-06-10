@@ -1,30 +1,23 @@
 package com.bbd.securitycore.adapter.out.http;
 
 import com.bbd.securitycore.application.port.out.LoadUserSnapshotPort;
-import com.bbd.securitycore.config.BbdSecurityProperties;
 import com.bbd.securitycore.domain.UserSnapshot;
-import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
 
 /*
  User Service에서 UserSnapshot을 조회하는 HTTP adapter.
 
  Redis 캐시에 UserSnapshot이 없을 때,
- keycloakSub 기준으로 User Service를 호출해서 최신 사용자 스냅샷을 가져온다.
+ HTTP Service Interface를 통해 User Service에서 최신 사용자 스냅샷을 가져온다.
 
  이 adapter는 application 계층의 LoadUserSnapshotPort를 구현한다.
  */
 public class UserServiceSnapshotAdapter implements LoadUserSnapshotPort {
 
-    private final RestClient restClient;
-    private final BbdSecurityProperties properties;
+    private final UserSnapshotHttpClient userSnapshotHttpClient;
 
-    public UserServiceSnapshotAdapter(
-            RestClient restClient,
-            BbdSecurityProperties properties
-    ) {
-        this.restClient = restClient;
-        this.properties = properties;
+    public UserServiceSnapshotAdapter(UserSnapshotHttpClient userSnapshotHttpClient) {
+        this.userSnapshotHttpClient = userSnapshotHttpClient;
     }
 
     /*
@@ -43,10 +36,7 @@ public class UserServiceSnapshotAdapter implements LoadUserSnapshotPort {
         }
 
         try {
-            return restClient.get()
-                    .uri(properties.getUserSnapshotPath(), keycloakSub)
-                    .retrieve()
-                    .body(UserSnapshot.class);
+            return userSnapshotHttpClient.getUserSnapshot(keycloakSub);
         } catch (RestClientException exception) {
             return null;
         }
