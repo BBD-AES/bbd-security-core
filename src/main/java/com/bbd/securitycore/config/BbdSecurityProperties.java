@@ -17,6 +17,27 @@ import java.util.List;
 public class BbdSecurityProperties {
 
     /*
+    UserSnapshot을 조회할 User Service의 base URL.
+    Docker Compose 환경 예:
+    http://bbd-user:8080
+
+    로컬 환경 예:
+    http://localhost:8081
+    */
+    private String userServiceBaseUrl;
+
+    /*
+     User Service의 UserSnapshot 조회 API 경로.
+
+     {keycloakSub}는 실제 Keycloak sub 값으로 치환된다.
+
+     예:
+     /internal/users/snapshot/{keycloakSub}
+     */
+    private String userSnapshotPath = "/internal/users/snapshot/{keycloakSub}";
+
+    
+    /*
      bbd-security-core의 기본 SecurityFilterChain 자동 등록 여부.
      true이면 공통 Resource Server 보안 설정을 자동 등록한다.
      false이면 각 MSA가 직접 SecurityFilterChain을 구성해야 한다.

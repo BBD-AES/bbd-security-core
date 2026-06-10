@@ -1,6 +1,7 @@
 package com.bbd.securitycore.config;
 
 import com.bbd.securitycore.adapter.in.security.SpringSecurityAuthenticatedUserAdapter;
+import com.bbd.securitycore.adapter.out.http.UserServiceSnapshotAdapter;
 import com.bbd.securitycore.adapter.out.redis.RedisUserSnapshotCacheAdapter;
 import com.bbd.securitycore.application.port.in.AuthorizeUserUseCase;
 import com.bbd.securitycore.application.port.in.GetCurrentUserSnapshotUseCase;
@@ -29,6 +30,7 @@ import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.web.client.RestClient;
 import tools.jackson.databind.ObjectMapper;
 
 /*
@@ -204,6 +206,43 @@ public class BbdSecurityAutoConfiguration {
     }
 
     /*
+User Service 호출용 RestClient를 등록한다.
+
+bbd.security.user-service-base-url 값이 있을 때만 등록된다.
+
+예:
+bbd.security.user-service-base-url=http://bbd-user:8080
+*/
+    @Bean(name = "userServiceRestClient")
+    @ConditionalOnProperty(
+            prefix = "bbd.security",
+            name = "user-service-base-url"
+    )
+    @ConditionalOnMissingBean(name = "userServiceRestClient")
+    public RestClient userServiceRestClient(BbdSecurityProperties properties) {
+        return RestClient.builder()
+                .baseUrl(properties.getUserServiceBaseUrl())
+                .build();
+    }
+
+    /*
+     User Service에서 UserSnapshot을 조회하는 HTTP adapter를 등록한다.
+
+     이 adapter는 LoadUserSnapshotPort를 구현한다.
+     Redis 캐시에 UserSnapshot이 없을 때 User Service를 호출한다.
+     */
+    @Bean
+    @ConditionalOnBean(name = "userServiceRestClient")
+    @ConditionalOnMissingBean(LoadUserSnapshotPort.class)
+    public UserServiceSnapshotAdapter userServiceSnapshotAdapter(
+            @Qualifier("userServiceRestClient") RestClient restClient,
+            BbdSecurityProperties properties
+    ) {
+        return new UserServiceSnapshotAdapter(restClient, properties);
+    }
+
+
+    /*
      현재 요청 사용자의 UserSnapshot을 조회하는 유스케이스를 등록한다.
 
      내부적으로 다음 순서로 동작한다.
@@ -214,11 +253,20 @@ public class BbdSecurityAutoConfiguration {
      4. 조회 결과 Redis 캐시 저장
      5. CurrentUserSnapshotResult 반환
 
-     User Service HTTP adapter가 아직 없다면
-     실제 MSA 실행 시 LoadUserSnapshotPort Bean 생성 실패가 날 수 있다.
-     다음 단계에서 해당 adapter를 추가한다.
+     User Service HTTP adapter가 등록되어 있으면
+     Redis 캐시 miss 시 User Service에서 UserSnapshot을 조회한다.
+
+     bbd.security.user-service-base-url 설정이 없으면
+     LoadUserSnapshotPort가 등록되지 않으므로
+     이 유스케이스도 등록되지 않는다.
      */
     @Bean
+    @ConditionalOnBean({
+            ExtractAuthenticatedUserPort.class,
+            LoadUserSnapshotCachePort.class,
+            LoadUserSnapshotPort.class,
+            SaveUserSnapshotCachePort.class
+    })
     @ConditionalOnMissingBean(GetCurrentUserSnapshotUseCase.class)
     public GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase(
             ExtractAuthenticatedUserPort extractAuthenticatedUserPort,
@@ -240,4 +288,6 @@ public class BbdSecurityAutoConfiguration {
     public AuthorizeUserUseCase authorizeUserUseCase() {
         return new AuthorizeUserService();
     }
+
+
 }
