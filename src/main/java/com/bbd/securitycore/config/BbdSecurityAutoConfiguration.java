@@ -1,6 +1,7 @@
 package com.bbd.securitycore.config;
 
 import com.bbd.securitycore.adapter.in.security.SpringSecurityAuthenticatedUserAdapter;
+import com.bbd.securitycore.adapter.out.redis.RedisUserSnapshotCacheAdapter;
 import com.bbd.securitycore.application.port.in.AuthorizeUserUseCase;
 import com.bbd.securitycore.application.port.in.GetCurrentUserSnapshotUseCase;
 import com.bbd.securitycore.application.port.out.ExtractAuthenticatedUserPort;
@@ -9,17 +10,26 @@ import com.bbd.securitycore.application.port.out.LoadUserSnapshotPort;
 import com.bbd.securitycore.application.port.out.SaveUserSnapshotCachePort;
 import com.bbd.securitycore.application.service.AuthorizeUserService;
 import com.bbd.securitycore.application.service.GetCurrentUserSnapshotService;
+import com.bbd.securitycore.domain.UserSnapshot;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.core.annotation.Order;
+import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
 import org.springframework.security.config.http.SessionCreationPolicy;
 import org.springframework.security.web.SecurityFilterChain;
+import tools.jackson.databind.ObjectMapper;
 
 /*
  bbd-security-core의 자동 설정 클래스.
@@ -31,24 +41,25 @@ import org.springframework.security.web.SecurityFilterChain;
 
  1. 각 MSA의 Access Token 검증용 SecurityFilterChain 등록
  2. 현재 인증 사용자 sub 추출 adapter 등록
- 3. UserSnapshot 조회 유스케이스 등록
- 4. 인가 검사 유스케이스 등록
+ 3. UserSnapshot Redis 캐시 adapter 등록
+ 4. UserSnapshot 조회 유스케이스 등록
+ 5. 인가 검사 유스케이스 등록
 
  기본 정책은 다음과 같다.
 
  - 각 MSA는 별도 SecurityConfig를 만들지 않는다.
  - bbd-security-core가 Resource Server 기반 보안 체인을 등록한다.
  - 정말 예외적으로 MSA가 보안을 직접 구성해야 하면 bbd.security.enabled=false로 끈다.
- bbd:
-  security:
-    enabled: false
- - 각 MSA는 별도의 YML 파일에 아래와 같이 기입한다.
+ - 각 MSA는 별도의 yml 파일에 issuer-uri를 설정한다.
+
+ 예:
+
  spring:
-  security:
-    oauth2:
-      resourceserver:
-        jwt:
-          issuer-uri: ${KEYCLOAK_ISSUER_URI}
+   security:
+     oauth2:
+       resourceserver:
+         jwt:
+           issuer-uri: ${KEYCLOAK_ISSUER_URI}
  */
 @AutoConfiguration
 @ConditionalOnClass(SecurityFilterChain.class)
@@ -71,9 +82,7 @@ public class BbdSecurityAutoConfiguration {
      세션은 STATELESS, CSRF는 disable로 둔다.
      */
     @Bean
-    // 프레임워크 기본 보안 체인으로 등록하되, 나중에 특정 MSA가 더 높은 우선순위의 특수 체인을 만들 수 있게 여지를 남김
     @Order(100)
-    // 설정값에 따라 Bean을 등록할지 말지 결정하는 어노테이션 -> MSA의 yml 파일과 관련있다.
     @ConditionalOnProperty(
             prefix = "bbd.security",
             name = "enabled",
@@ -92,7 +101,7 @@ public class BbdSecurityAutoConfiguration {
                         .requestMatchers(permitAllPaths).permitAll()
                         .anyRequest().authenticated()
                 )
-                .csrf(csrf -> csrf.disable())
+                .csrf(AbstractHttpConfigurer::disable)
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS)
                 )
@@ -115,6 +124,86 @@ public class BbdSecurityAutoConfiguration {
     }
 
     /*
+     UserSnapshot 전용 RedisTemplate을 등록한다.
+
+     이 RedisTemplate은 bbd-security-core가
+     UserSnapshot 객체를 Redis에 저장하고 조회할 때 사용한다.
+
+     key는 사람이 읽기 쉬운 문자열 형태로 저장하고,
+     value는 UserSnapshot 객체를 JSON 형태로 직렬화해서 저장한다.
+
+     RedisConnectionFactory가 존재할 때만 등록된다.
+     즉, 각 MSA가 Redis host/port 같은 Redis 설정을 가지고 있어야
+     Spring Boot가 RedisConnectionFactory를 만들고,
+     그 이후에 이 Bean도 생성된다.
+     */
+    @Bean(name = "userSnapshotRedisTemplate")
+    @ConditionalOnBean(RedisConnectionFactory.class)
+    @ConditionalOnMissingBean(name = "userSnapshotRedisTemplate")
+    public RedisTemplate<String, UserSnapshot> userSnapshotRedisTemplate(
+            RedisConnectionFactory redisConnectionFactory,
+            ObjectMapper objectMapper
+    ) {
+        // UserSnapshot 캐시 전용 RedisTemplate 객체를 생성한다.
+        RedisTemplate<String, UserSnapshot> redisTemplate = new RedisTemplate<>();
+
+        // Spring Boot가 Redis 설정을 기반으로 만들어둔 Redis 연결 정보를 주입한다.
+        // 이 설정이 있어야 RedisTemplate이 실제 Redis 서버와 통신할 수 있다.
+        redisTemplate.setConnectionFactory(redisConnectionFactory);
+
+        // Redis key를 문자열로 저장하기 위한 serializer이다.
+        // 예: user:snapshot:{keycloakSub}
+        StringRedisSerializer stringSerializer = new StringRedisSerializer();
+
+        // Redis value를 JSON으로 저장하기 위한 serializer이다.
+        // UserSnapshot 객체를 Redis에 저장할 때 JSON으로 변환하고,
+        // Redis에서 읽어올 때 다시 UserSnapshot 객체로 변환한다.
+        GenericJacksonJsonRedisSerializer jsonSerializer =
+                new GenericJacksonJsonRedisSerializer(objectMapper);
+
+        // 일반 key의 serializer를 문자열 방식으로 설정한다.
+        redisTemplate.setKeySerializer(stringSerializer);
+
+        // hash 구조를 사용할 경우 hash key도 문자열 방식으로 설정한다.
+        redisTemplate.setHashKeySerializer(stringSerializer);
+
+        // 일반 value의 serializer를 JSON 방식으로 설정한다.
+        redisTemplate.setValueSerializer(jsonSerializer);
+
+        // hash 구조를 사용할 경우 hash value도 JSON 방식으로 설정한다.
+        redisTemplate.setHashValueSerializer(jsonSerializer);
+
+        // 위에서 설정한 connectionFactory와 serializer 설정을 RedisTemplate에 최종 반영한다.
+        redisTemplate.afterPropertiesSet();
+
+        // UserSnapshot 캐시에서 사용할 RedisTemplate Bean을 반환한다.
+        return redisTemplate;
+    }
+
+    /*
+     Redis 기반 UserSnapshot 캐시 adapter를 등록한다.
+
+     이 adapter는 다음 두 포트를 구현한다.
+
+     - LoadUserSnapshotCachePort(조회)
+     - SaveUserSnapshotCachePort(저장)
+
+     RedisTemplate이 존재할 때만 등록된다.
+     */
+    @Bean
+    @ConditionalOnBean(name = "userSnapshotRedisTemplate")
+    @ConditionalOnMissingBean({
+            LoadUserSnapshotCachePort.class,
+            SaveUserSnapshotCachePort.class
+    })
+    public RedisUserSnapshotCacheAdapter redisUserSnapshotCacheAdapter(
+            @Qualifier("userSnapshotRedisTemplate") RedisTemplate<String, UserSnapshot> redisTemplate,
+            BbdSecurityProperties properties
+    ) {
+        return new RedisUserSnapshotCacheAdapter(redisTemplate, properties);
+    }
+
+    /*
      현재 요청 사용자의 UserSnapshot을 조회하는 유스케이스를 등록한다.
 
      내부적으로 다음 순서로 동작한다.
@@ -125,9 +214,9 @@ public class BbdSecurityAutoConfiguration {
      4. 조회 결과 Redis 캐시 저장
      5. CurrentUserSnapshotResult 반환
 
-     Redis adapter와 User Service HTTP adapter가 아직 없다면
-     실제 MSA 실행 시 Bean 생성 실패가 날 수 있다.
-     다음 단계에서 해당 adapter들을 추가한다.
+     User Service HTTP adapter가 아직 없다면
+     실제 MSA 실행 시 LoadUserSnapshotPort Bean 생성 실패가 날 수 있다.
+     다음 단계에서 해당 adapter를 추가한다.
      */
     @Bean
     @ConditionalOnMissingBean(GetCurrentUserSnapshotUseCase.class)
@@ -145,9 +234,7 @@ public class BbdSecurityAutoConfiguration {
         );
     }
 
-    /*
-     ACTIVE, role, tenancy 같은 공통 인가 규칙을 검사하는 유스케이스를 등록한다.
-     */
+    // ACTIVE, role, tenancy 같은 공통 인가 규칙을 검사하는 유스케이스를 등록한다.
     @Bean
     @ConditionalOnMissingBean(AuthorizeUserUseCase.class)
     public AuthorizeUserUseCase authorizeUserUseCase() {

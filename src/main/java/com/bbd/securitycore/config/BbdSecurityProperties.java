@@ -49,4 +49,22 @@ public class BbdSecurityProperties {
             "/*/swagger-ui.html",
             "/*/v3/api-docs/**"
     );
+
+    /*
+    UserSnapshot Redis 캐시 key prefix.
+
+    실제 Redis key 예:
+    user:snapshot:{keycloakSub}
+    */
+    private String userSnapshotCacheKeyPrefix = "user:snapshot:";
+
+    /*
+     UserSnapshot Redis 캐시 TTL.
+
+     기본값은 300초, 즉 5분이다.
+
+     너무 길면 권한 변경 반영이 늦어지고,
+     너무 짧으면 User Service 호출이 많아진다.
+     */
+    private long userSnapshotCacheTtlSeconds = 300;
 }
