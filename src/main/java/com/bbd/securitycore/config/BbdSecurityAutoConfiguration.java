@@ -337,7 +337,6 @@ public class BbdSecurityAutoConfiguration {
     public RoleAuthorizationAspect roleAuthorizationAspect(
             GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase
     ) {
-        System.out.println("RoleAuthorizationAspect Bean 등록됨");
         return new RoleAuthorizationAspect(getCurrentUserSnapshotUseCase);
     }
 }

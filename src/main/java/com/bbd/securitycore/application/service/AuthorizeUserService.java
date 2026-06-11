@@ -1,7 +1,6 @@
 package com.bbd.securitycore.application.service;
 
 import com.bbd.securitycore.application.port.in.AuthorizeUserUseCase;
-import com.bbd.securitycore.domain.UserRole;
 import com.bbd.securitycore.domain.UserSnapshot;
 import com.bbd.securitycore.global.error.ApiException;
 import com.bbd.securitycore.global.error.dto.ErrorCode;
