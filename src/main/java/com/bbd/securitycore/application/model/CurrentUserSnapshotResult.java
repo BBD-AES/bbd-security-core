@@ -22,7 +22,6 @@ public record CurrentUserSnapshotResult(
         UserStatus status,
         UserRole role,
         TenancyType tenancyType,
-        Long tenancyId,
         String tenancyName,
         Long version
 ) {
@@ -40,7 +39,6 @@ public record CurrentUserSnapshotResult(
                 snapshot.status(),
                 snapshot.role(),
                 snapshot.tenancyType(),
-                snapshot.tenancyId(),
                 snapshot.tenancyName(),
                 snapshot.version()
         );
@@ -59,7 +57,6 @@ public record CurrentUserSnapshotResult(
                 status,
                 role,
                 tenancyType,
-                tenancyId,
                 tenancyName,
                 version
         );

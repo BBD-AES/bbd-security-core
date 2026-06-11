@@ -1,7 +1,7 @@
 package com.bbd.securitycore.adapter.out.http;
 
 import com.bbd.securitycore.domain.UserSnapshot;
-import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.service.annotation.GetExchange;
 import org.springframework.web.service.annotation.HttpExchange;
 
@@ -22,6 +22,6 @@ public interface UserSnapshotHttpClient {
      요청 예:
      GET /internal/users/snapshot/{keycloakSub}
      */
-    @GetExchange("/internal/users/snapshot/{keycloakSub}")
-    UserSnapshot getUserSnapshot(@PathVariable String keycloakSub);
+    @GetExchange("/api/v1/users/internal/snapshot")
+    UserSnapshot getUserSnapshot(@RequestParam("keycloakSub") String keycloakSub);
 }

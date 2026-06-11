@@ -43,44 +43,4 @@ public class AuthorizeUserService implements AuthorizeUserUseCase {
             throw new ApiException(ErrorCode.USER_INACTIVE);
         }
     }
-
-    /*
-     사용자가 특정 역할을 가지고 있는지 검사한다.
-
-     먼저 ACTIVE 상태인지 확인한 뒤,
-     필요한 역할이 없으면 FORBIDDEN_ROLE 예외를 던진다.
-
-     예:
-     - HQ_MANAGER만 승인 가능
-     - BRANCH_MANAGER만 지점 재고 조정 가능
-     */
-    @Override
-    public void requireRole(UserSnapshot snapshot, UserRole requiredRole) {
-        requireActive(snapshot);
-
-        if (!snapshot.hasRole(requiredRole)) {
-            throw new ApiException(ErrorCode.FORBIDDEN_ROLE);
-        }
-    }
-
-    /*
-     사용자가 접근하려는 리소스의 소속에 접근 가능한지 검사한다.
-
-     HQ 사용자는 전체 소속 데이터에 접근할 수 있고,
-     BRANCH 사용자는 자신의 tenancyId와 같은 리소스에만 접근할 수 있다.
-
-     targetTenancyId는 각 MSA의 도메인 리소스에서 가져온 소속 ID이다.
-     예:
-     - salesOrder.getTenancyId()
-     - stock.getTenancyId()
-     - purchaseOrder.getTenancyId()
-     */
-    @Override
-    public void requireSameTenancy(UserSnapshot snapshot, Long targetTenancyId) {
-        requireActive(snapshot);
-
-        if (!snapshot.canAccessTenancy(targetTenancyId)) {
-            throw new ApiException(ErrorCode.FORBIDDEN_TENANCY);
-        }
-    }
 }

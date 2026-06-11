@@ -37,8 +37,12 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
      현재 인증된 사용자의 UserSnapshot을 조회한다.
 
      keycloakSub가 없으면 인증되지 않은 요청으로 판단한다.
-     캐시에 UserSnapshot이 있으면 그대로 사용하고,
-     캐시에 없으면 User Service에서 조회한 뒤 캐시에 저장한다.
+
+     Redis 캐시 포트가 등록되어 있으면 먼저 캐시에서 UserSnapshot을 조회하고,
+     캐시에 없으면 User Service에서 조회한다.
+
+     Redis 캐시 포트가 없으면 캐시를 사용하지 않고
+     바로 User Service에서 UserSnapshot을 조회한다.
      */
     @Override
     public CurrentUserSnapshotResult getCurrentUserSnapshot() {
@@ -48,19 +52,27 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
             throw new ApiException(ErrorCode.AUTH_UNAUTHENTICATED);
         }
 
-        UserSnapshot snapshot = loadUserSnapshotCachePort.findByKeycloakSub(keycloakSub)
-                .orElseGet(() -> loadFromUserServiceAndCache(keycloakSub));
+        UserSnapshot snapshot;
+
+        if (loadUserSnapshotCachePort != null) {
+            snapshot = loadUserSnapshotCachePort.findByKeycloakSub(keycloakSub)
+                    .orElseGet(() -> loadFromUserServiceAndCache(keycloakSub));
+        } else {
+            snapshot = loadFromUserServiceAndCache(keycloakSub);
+        }
 
         return CurrentUserSnapshotResult.from(snapshot);
     }
 
     /*
-     Redis 캐시에 UserSnapshot이 없을 때 User Service에서 조회한다.
+     Redis 캐시에 UserSnapshot이 없거나 캐시를 사용할 수 없을 때
+     User Service에서 UserSnapshot을 조회한다.
 
      User Service에서도 사용자를 찾지 못하면 인가 판단을 진행할 수 없으므로
      USER_SNAPSHOT_NOT_FOUND 예외를 던진다.
 
-     정상적으로 조회된 UserSnapshot은 이후 요청에서 재사용할 수 있도록 캐시에 저장한다.
+     저장용 Redis 캐시 포트가 등록되어 있으면
+     정상적으로 조회된 UserSnapshot을 이후 요청에서 재사용할 수 있도록 저장한다.
      */
     private UserSnapshot loadFromUserServiceAndCache(String keycloakSub) {
         UserSnapshot snapshot = loadUserSnapshotPort.loadByKeycloakSub(keycloakSub);
@@ -69,7 +81,9 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
             throw new ApiException(ErrorCode.USER_SNAPSHOT_NOT_FOUND);
         }
 
-        saveUserSnapshotCachePort.save(snapshot);
+        if (saveUserSnapshotCachePort != null) {
+            saveUserSnapshotCachePort.save(snapshot);
+        }
 
         return snapshot;
     }

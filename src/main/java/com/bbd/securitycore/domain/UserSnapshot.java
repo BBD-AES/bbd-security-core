@@ -11,7 +11,6 @@ public record UserSnapshot(
         UserStatus status,
         UserRole role,
         TenancyType tenancyType,
-        Long tenancyId,
         String tenancyName,
         Long version
 ) {
@@ -26,25 +25,5 @@ public record UserSnapshot(
 
     public boolean hasRole(UserRole requiredRole) {
         return role == requiredRole;
-    }
-
-    public boolean belongsToHq() {
-        return tenancyType == TenancyType.HQ;
-    }
-
-    public boolean belongsToBranch() {
-        return tenancyType == TenancyType.BRANCH;
-    }
-
-    public boolean belongsToTenancy(Long targetTenancyId) {
-        return tenancyId != null && tenancyId.equals(targetTenancyId);
-    }
-
-    public boolean canAccessTenancy(Long targetTenancyId) {
-        if (belongsToHq()) {
-            return true;
-        }
-
-        return belongsToTenancy(targetTenancyId);
     }
 }

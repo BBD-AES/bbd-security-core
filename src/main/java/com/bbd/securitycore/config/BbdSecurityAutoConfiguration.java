@@ -1,5 +1,6 @@
 package com.bbd.securitycore.config;
 
+import com.bbd.securitycore.adapter.in.aop.RoleAuthorizationAspect;
 import com.bbd.securitycore.adapter.in.security.SpringSecurityAuthenticatedUserAdapter;
 import com.bbd.securitycore.adapter.out.http.SecurityContextAccessTokenRelayInterceptor;
 import com.bbd.securitycore.adapter.out.http.UserServiceSnapshotAdapter;
@@ -14,6 +15,7 @@ import com.bbd.securitycore.application.port.out.SaveUserSnapshotCachePort;
 import com.bbd.securitycore.application.service.AuthorizeUserService;
 import com.bbd.securitycore.application.service.GetCurrentUserSnapshotService;
 import com.bbd.securitycore.domain.UserSnapshot;
+import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
@@ -21,11 +23,13 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
+import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
 import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
-import org.springframework.data.redis.serializer.GenericJacksonJsonRedisSerializer;
+import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
@@ -66,9 +70,15 @@ import tools.jackson.databind.ObjectMapper;
          jwt:
            issuer-uri: ${KEYCLOAK_ISSUER_URI}
  */
-@AutoConfiguration
+
+// RedisConnectionFactory가 생기기 전에 security-core 자동설정이 먼저 평가돼서
+// userSnapshotRedisTemplate이 안 뜨는 문제 해결
+// Redis 자동설정 뒤에 실행되게 바꿈
+@AutoConfiguration(after = DataRedisAutoConfiguration.class)
 @ConditionalOnClass(SecurityFilterChain.class)
 @EnableConfigurationProperties(BbdSecurityProperties.class)
+// @RequireRole은 필터가 아니라 AOP라서 이 설정이 필요
+@EnableAspectJAutoProxy(proxyTargetClass = true)
 @ImportHttpServices(
         group = "bbd-user-service",
         types = UserSnapshotHttpClient.class
@@ -167,8 +177,10 @@ public class BbdSecurityAutoConfiguration {
         // Redis value를 JSON으로 저장하기 위한 serializer이다.
         // UserSnapshot 객체를 Redis에 저장할 때 JSON으로 변환하고,
         // Redis에서 읽어올 때 다시 UserSnapshot 객체로 변환한다.
-        GenericJacksonJsonRedisSerializer jsonSerializer =
-                new GenericJacksonJsonRedisSerializer(objectMapper);
+        // GenericJacksonJsonRedisSerializer였는데,
+        // 그 방식은 Redis에서 읽을 때 UserSnapshot이 아니라 LinkedHashMap으로 역직렬화돼서 캐스팅 에러
+        JacksonJsonRedisSerializer<UserSnapshot> jsonSerializer =
+                new JacksonJsonRedisSerializer<>(objectMapper, UserSnapshot.class);
 
         // 일반 key의 serializer를 문자열 방식으로 설정한다.
         redisTemplate.setKeySerializer(stringSerializer);
@@ -251,8 +263,11 @@ public class BbdSecurityAutoConfiguration {
 
    UserSnapshotHttpClient는 @ImportHttpServices가 생성한 HTTP Service proxy Bean이다.
    */
+
+    // @ConditionalOnBean(UserSnapshotHttpClient.class)
+    // HTTP Service proxy Bean이 조건 평가 시점보다 늦게 등록돼서 UserServiceSnapshotAdapter가 안 만들어졌다.
+    // 그래서 조건을 제거했다.
     @Bean
-    @ConditionalOnBean(UserSnapshotHttpClient.class)
     @ConditionalOnMissingBean(LoadUserSnapshotPort.class)
     public UserServiceSnapshotAdapter userServiceSnapshotAdapter(
             UserSnapshotHttpClient userSnapshotHttpClient
@@ -283,31 +298,46 @@ public class BbdSecurityAutoConfiguration {
     @Bean
     @ConditionalOnBean({
             ExtractAuthenticatedUserPort.class,
-            LoadUserSnapshotCachePort.class,
-            LoadUserSnapshotPort.class,
-            SaveUserSnapshotCachePort.class
+            LoadUserSnapshotPort.class
     })
+
+    // 캐시 포트가 반드시 있어야 GetCurrentUserSnapshotUseCase가 만들어졌는데
+    // 이제 Redis가 없어도 User Service 직접 조회는 가능하게 바꿈
     @ConditionalOnMissingBean(GetCurrentUserSnapshotUseCase.class)
     public GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase(
             ExtractAuthenticatedUserPort extractAuthenticatedUserPort,
-            LoadUserSnapshotCachePort loadUserSnapshotCachePort,
+            ObjectProvider<LoadUserSnapshotCachePort> loadUserSnapshotCachePort,
             LoadUserSnapshotPort loadUserSnapshotPort,
-            SaveUserSnapshotCachePort saveUserSnapshotCachePort
+            ObjectProvider<SaveUserSnapshotCachePort> saveUserSnapshotCachePort
     ) {
         return new GetCurrentUserSnapshotService(
                 extractAuthenticatedUserPort,
-                loadUserSnapshotCachePort,
+                loadUserSnapshotCachePort.getIfAvailable(),
                 loadUserSnapshotPort,
-                saveUserSnapshotCachePort
+                saveUserSnapshotCachePort.getIfAvailable()
         );
     }
 
-    // ACTIVE, role, tenancy 같은 공통 인가 규칙을 검사하는 유스케이스를 등록한다.
+    // ACTIVE, role 같은 공통 인가 규칙을 검사하는 유스케이스를 등록한다.
     @Bean
     @ConditionalOnMissingBean(AuthorizeUserUseCase.class)
     public AuthorizeUserUseCase authorizeUserUseCase() {
         return new AuthorizeUserService();
     }
 
+    /*
+     @RequireRole 기반 접근 제어 Aspect를 등록한다.
 
+     각 MSA는 Controller 또는 Service 클래스/메서드에 @RequireRole만 붙이면 되고,
+     실제 UserSnapshot 조회와 role 검사는 이 Aspect가 수행한다.
+     */
+    @Bean
+    @ConditionalOnBean(GetCurrentUserSnapshotUseCase.class)
+    @ConditionalOnMissingBean(RoleAuthorizationAspect.class)
+    public RoleAuthorizationAspect roleAuthorizationAspect(
+            GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase
+    ) {
+        System.out.println("RoleAuthorizationAspect Bean 등록됨");
+        return new RoleAuthorizationAspect(getCurrentUserSnapshotUseCase);
+    }
 }

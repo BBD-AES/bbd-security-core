@@ -21,21 +21,4 @@ public interface AuthorizeUserUseCase {
      */
     void requireActive(UserSnapshot snapshot);
 
-    /*
-     사용자가 특정 역할을 가지고 있는지 검사한다.
-
-     예:
-     - HQ_MANAGER만 승인 가능
-     - BRANCH_MANAGER만 지점 재고 조정 가능
-     */
-    void requireRole(UserSnapshot snapshot, UserRole requiredRole);
-
-    /*
-     사용자가 접근하려는 리소스의 소속과
-     현재 사용자의 소속이 일치하는지 검사한다.
-
-     HQ 사용자는 전체 소속 접근이 가능하고,
-     BRANCH 사용자는 자신의 tenancyId와 같은 리소스에만 접근할 수 있다.
-     */
-    void requireSameTenancy(UserSnapshot snapshot, Long targetTenancyId);
 }
