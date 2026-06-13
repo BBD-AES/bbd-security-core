@@ -3,8 +3,9 @@ plugins {
     id 'maven-publish'
 }
 
+// 버전 변경
 group = 'com.bbd'
-version = '0.0.2'
+version = '0.0.3'
 
 java {
     toolchain {
