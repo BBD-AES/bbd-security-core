@@ -24,6 +24,7 @@ public record UserSnapshot(
     }
 
     public boolean hasRole(UserRole requiredRole) {
-        return role == requiredRole;
+        // ERP 시스템 관리자는 모든 업무 role의 권한을 포함한다.
+        return role == UserRole.ADMIN || role == requiredRole;
     }
 }
