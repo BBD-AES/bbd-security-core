@@ -10,6 +10,9 @@ import com.bbd.securitycore.domain.UserSnapshot;
 import com.bbd.securitycore.global.error.ApiException;
 import com.bbd.securitycore.global.error.dto.ErrorCode;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
+
+import java.util.Optional;
 
 /*
  현재 요청 사용자에 대한 UserSnapshot을 조회하는 application service.
@@ -25,6 +28,7 @@ import lombok.RequiredArgsConstructor;
  4. User Service에서 조회한 결과를 Redis 캐시에 저장
  5. application 결과 모델로 반환
  */
+@Slf4j
 @RequiredArgsConstructor
 public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseCase {
 
@@ -55,13 +59,32 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
         UserSnapshot snapshot;
 
         if (loadUserSnapshotCachePort != null) {
-            snapshot = loadUserSnapshotCachePort.findByKeycloakSub(keycloakSub)
+            snapshot = loadFromCache(keycloakSub)
                     .orElseGet(() -> loadFromUserServiceAndCache(keycloakSub));
         } else {
             snapshot = loadFromUserServiceAndCache(keycloakSub);
         }
 
         return CurrentUserSnapshotResult.from(snapshot);
+    }
+
+    /*
+     Redis 같은 캐시 저장소는 인가 판단의 원본이 아니다.
+
+     캐시 조회 중 Redis 연결 실패 같은 런타임 예외가 발생하면
+     캐시 miss와 동일하게 취급해 User Service 원본 조회로 fallback한다.
+     */
+    private Optional<UserSnapshot> loadFromCache(String keycloakSub) {
+        try {
+            return loadUserSnapshotCachePort.findByKeycloakSub(keycloakSub);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "UserSnapshot 캐시 조회에 실패했습니다. User Service 원본 조회로 fallback합니다. keycloakSub={}",
+                    keycloakSub,
+                    exception
+            );
+            return Optional.empty();
+        }
     }
 
     /*
@@ -82,9 +105,26 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
         }
 
         if (saveUserSnapshotCachePort != null) {
-            saveUserSnapshotCachePort.save(snapshot);
+            saveToCache(snapshot);
         }
 
         return snapshot;
+    }
+
+    /*
+     User Service 원본 조회가 성공했다면 현재 요청은 계속 처리해야 한다.
+
+     Redis 저장 실패는 캐시 warm-up 실패일 뿐이므로 로그만 남기고 전파하지 않는다.
+     */
+    private void saveToCache(UserSnapshot snapshot) {
+        try {
+            saveUserSnapshotCachePort.save(snapshot);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "UserSnapshot 캐시 저장에 실패했습니다. 현재 요청은 User Service 조회 결과로 계속 처리합니다. keycloakSub={}",
+                    snapshot.keycloakSub(),
+                    exception
+            );
+        }
     }
 }
