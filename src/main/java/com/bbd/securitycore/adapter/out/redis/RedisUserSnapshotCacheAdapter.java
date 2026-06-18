@@ -4,6 +4,7 @@ import com.bbd.securitycore.application.port.out.LoadUserSnapshotCachePort;
 import com.bbd.securitycore.application.port.out.SaveUserSnapshotCachePort;
 import com.bbd.securitycore.config.BbdSecurityProperties;
 import com.bbd.securitycore.domain.UserSnapshot;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
 
 import java.time.Duration;
@@ -20,6 +21,7 @@ import java.util.Optional;
  예:
  user:snapshot:{keycloakSub}
  */
+@Slf4j
 public class RedisUserSnapshotCacheAdapter implements LoadUserSnapshotCachePort, SaveUserSnapshotCachePort {
 
     private final RedisTemplate<String, UserSnapshot> redisTemplate;
@@ -67,6 +69,7 @@ public class RedisUserSnapshotCacheAdapter implements LoadUserSnapshotCachePort,
                 userSnapshot,
                 Duration.ofSeconds(properties.getUserSnapshotCacheTtlSeconds())
         );
+        log.info( "❤️❤️❤️❤️❤️❤️❤️❤️❤️❤️레디스에 캐싱이 성공했습니다. 유저의 이름은 {} 입니다.", userSnapshot.displayName());
     }
 
     private String toKey(String keycloakSub) {
