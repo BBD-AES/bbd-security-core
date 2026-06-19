@@ -12,7 +12,6 @@ class UserSnapshotTest {
                 1L,
                 "admin-sub",
                 "ADMIN",
-                "admin",
                 "관리자",
                 "admin@example.com",
                 "시스템관리자",

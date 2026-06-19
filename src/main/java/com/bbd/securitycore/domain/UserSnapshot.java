@@ -4,7 +4,6 @@ public record UserSnapshot(
         Long userId,
         String keycloakSub,
         String employeeNumber,
-        String username,
         String displayName,
         String email,
         String position,

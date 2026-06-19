@@ -88,7 +88,6 @@ class GetCurrentUserSnapshotServiceTest {
                 1L,
                 keycloakSub,
                 "EMP-001",
-                "erp-user",
                 "ERP User",
                 "erp-user@example.com",
                 "staff",
