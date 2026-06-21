@@ -2,6 +2,7 @@ package com.bbd.securitycore.adapter.in.aop;
 
 import com.bbd.securitycore.adapter.in.annotation.RequireRole;
 import com.bbd.securitycore.application.model.CurrentUserSnapshotResult;
+import com.bbd.securitycore.application.port.in.AuthorizeUserUseCase;
 import com.bbd.securitycore.application.port.in.GetCurrentUserSnapshotUseCase;
 import com.bbd.securitycore.domain.UserRole;
 import com.bbd.securitycore.domain.UserSnapshot;
@@ -35,9 +36,14 @@ import java.util.Arrays;
 public class RoleAuthorizationAspect {
 
     private final GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase;
+    private final AuthorizeUserUseCase authorizeUserUseCase;
 
-    public RoleAuthorizationAspect(GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase) {
+    public RoleAuthorizationAspect(
+            GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase,
+            AuthorizeUserUseCase authorizeUserUseCase
+    ) {
         this.getCurrentUserSnapshotUseCase = getCurrentUserSnapshotUseCase;
+        this.authorizeUserUseCase = authorizeUserUseCase;
     }
 
     /*
@@ -56,13 +62,9 @@ public class RoleAuthorizationAspect {
         CurrentUserSnapshotResult result =
                 getCurrentUserSnapshotUseCase.getCurrentUserSnapshot();
 
-        if (result == null) {
-            throw new ApiException(ErrorCode.USER_SNAPSHOT_NOT_FOUND);
-        }
+        UserSnapshot userSnapshot = result == null ? null : result.toDomain();
 
-        UserSnapshot userSnapshot = result.toDomain();
-
-        validateUserStatus(userSnapshot);
+        authorizeUserUseCase.requireActive(userSnapshot);
         validateRoles(userSnapshot, requireRole.value());
     }
 
@@ -94,26 +96,6 @@ public class RoleAuthorizationAspect {
         }
 
         return AnnotatedElementUtils.findMergedAnnotation(targetClass, RequireRole.class);
-    }
-
-    /*
-     UserSnapshot 상태를 검사한다.
-
-     ACTIVE가 아니면 접근을 막는다.
-     PENDING과 INACTIVE는 구분해서 ErrorCode를 던진다.
-     */
-    private void validateUserStatus(UserSnapshot userSnapshot) {
-        if (userSnapshot == null) {
-            throw new ApiException(ErrorCode.USER_SNAPSHOT_NOT_FOUND);
-        }
-
-        if (userSnapshot.isPending()) {
-            throw new ApiException(ErrorCode.USER_PENDING);
-        }
-
-        if (!userSnapshot.isActive()) {
-            throw new ApiException(ErrorCode.USER_INACTIVE);
-        }
     }
 
     /*
