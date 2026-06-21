@@ -335,8 +335,9 @@ public class BbdSecurityAutoConfiguration {
     @ConditionalOnBean(GetCurrentUserSnapshotUseCase.class)
     @ConditionalOnMissingBean(RoleAuthorizationAspect.class)
     public RoleAuthorizationAspect roleAuthorizationAspect(
-            GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase
+            GetCurrentUserSnapshotUseCase getCurrentUserSnapshotUseCase,
+            AuthorizeUserUseCase authorizeUserUseCase
     ) {
-        return new RoleAuthorizationAspect(getCurrentUserSnapshotUseCase);
+        return new RoleAuthorizationAspect(getCurrentUserSnapshotUseCase, authorizeUserUseCase);
     }
 }
