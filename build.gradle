@@ -3,9 +3,10 @@ plugins {
     id 'maven-publish'
 }
 
-// 버전 변경
+// 이름 변경: bbd-security-core → bbd-platform-core (보안만이 아니라 보안·Redis·AOP·토큰릴레이·멱등을 묶은 플랫폼 스타터).
+// (GitHub 레포명/자바 패키지 com.bbd.securitycore.* 풀rename 은 후속 — 이번엔 아티팩트 좌표만 변경)
 group = 'com.bbd'
-version = '0.0.6'
+version = '0.0.7'
 
 java {
     toolchain {
@@ -35,6 +36,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.boot:spring-boot-starter-restclient'
 
+    // 멱등 Aspect 가 Idempotency-Key 헤더를 읽기 위해(런타임엔 호스트 MSA 의 서블릿 컨테이너가 제공)
+    compileOnly 'jakarta.servlet:jakarta.servlet-api'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
@@ -51,7 +55,7 @@ publishing {
             from components.java
 
             groupId = 'com.bbd'
-            artifactId = 'bbd-security-core'
+            artifactId = 'bbd-platform-core'
             version = project.version
         }
     }
