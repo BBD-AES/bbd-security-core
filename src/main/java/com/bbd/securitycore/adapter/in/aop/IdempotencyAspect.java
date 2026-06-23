@@ -6,6 +6,8 @@ import com.bbd.securitycore.global.error.dto.ErrorCode;
 import org.aspectj.lang.ProceedingJoinPoint;
 import org.aspectj.lang.annotation.Around;
 import org.aspectj.lang.annotation.Aspect;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.web.context.request.RequestContextHolder;
@@ -30,6 +32,7 @@ import java.time.Duration;
 @Order(0)
 public class IdempotencyAspect {
 
+    private static final Logger log = LoggerFactory.getLogger(IdempotencyAspect.class);
     private static final String HEADER = "Idempotency-Key";
     private static final Duration TTL = Duration.ofHours(24);
 
@@ -51,20 +54,41 @@ public class IdempotencyAspect {
             return joinPoint.proceed(); // 헤더 없으면 멱등 미적용
         }
 
-        String redisKey = redisKey(key);
-        if (Boolean.TRUE.equals(redis.hasKey(redisKey))) {
+        String principal = principalPort.getCurrentKeycloakSub();
+        if (principal == null) {
+            // 인증 주체 없음. @Idempotent 는 인증된 변경 엔드포인트 전제 → 공유 네임스페이스로 묶지 않고 통과(오탐 방지).
+            return joinPoint.proceed();
+        }
+        String redisKey = "idem:" + serviceName + ":" + principal + ":" + key;
+
+        // Redis 는 최적화 레이어 — 장애 시 fail-open(가용성 의존성 안 됨). 정확성 보루는 서비스 DB UNIQUE(spec §4).
+        if (existsQuietly(redisKey)) {
             throw new ApiException(ErrorCode.IDEMPOTENT_DUPLICATE); // 순차 재요청 → 409
         }
 
         Object result = joinPoint.proceed();
         // 커밋 후 성격: 정상 반환(=하위 @Transactional 커밋) 후 기록. value=true(응답 캐시 안 함).
-        redis.opsForValue().set(redisKey, "true", TTL);
+        setQuietly(redisKey);
         return result;
     }
 
-    private String redisKey(String key) {
-        String principal = principalPort.getCurrentKeycloakSub();
-        return "idem:" + serviceName + ":" + (principal == null ? "anon" : principal) + ":" + key;
+    // Redis 조회 실패는 빠른길 생략(중복 통과)으로 fail-open — 중복은 DB UNIQUE 가 막는다.
+    private boolean existsQuietly(String redisKey) {
+        try {
+            return Boolean.TRUE.equals(redis.hasKey(redisKey));
+        } catch (RuntimeException e) {
+            log.warn("멱등 Redis 조회 실패(fail-open, DB UNIQUE 로 위임): {}", e.toString());
+            return false;
+        }
+    }
+
+    // 기록 실패도 무시 — 다음 재요청은 DB UNIQUE 에 걸려 409.
+    private void setQuietly(String redisKey) {
+        try {
+            redis.opsForValue().set(redisKey, "true", TTL);
+        } catch (RuntimeException e) {
+            log.warn("멱등 Redis 기록 실패(무시): {}", e.toString());
+        }
     }
 
     private String header() {

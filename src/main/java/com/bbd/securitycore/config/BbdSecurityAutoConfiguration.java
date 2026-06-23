@@ -359,7 +359,7 @@ public class BbdSecurityAutoConfiguration {
     public IdempotencyAspect idempotencyAspect(
             StringRedisTemplate stringRedisTemplate,
             ExtractAuthenticatedUserPort extractAuthenticatedUserPort,
-            @Value("${spring.application.name:app}") String serviceName
+            @Value("${spring.application.name}") String serviceName
     ) {
         return new IdempotencyAspect(stringRedisTemplate, extractAuthenticatedUserPort, serviceName);
     }
