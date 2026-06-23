@@ -18,6 +18,15 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 class UserServiceSnapshotAdapterTest {
 
     @Test
+    void returnsNullWhenKeycloakSubIsBlank() {
+        UserServiceSnapshotAdapter adapter = new UserServiceSnapshotAdapter(keycloakSub -> {
+            throw new AssertionError("User Service must not be called for blank keycloakSub");
+        });
+
+        assertNull(adapter.loadByKeycloakSub(" "));
+    }
+
+    @Test
     void returnsNullWhenUserServiceReturnsNotFound() {
         UserServiceSnapshotAdapter adapter = new UserServiceSnapshotAdapter(keycloakSub -> {
             throw HttpClientErrorException.create(
