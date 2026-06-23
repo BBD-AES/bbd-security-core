@@ -1,5 +1,6 @@
 package com.bbd.securitycore.config;
 
+import com.bbd.securitycore.adapter.in.aop.IdempotencyAspect;
 import com.bbd.securitycore.adapter.in.aop.RoleAuthorizationAspect;
 import com.bbd.securitycore.adapter.in.security.SpringSecurityAuthenticatedUserAdapter;
 import com.bbd.securitycore.adapter.out.http.SecurityContextAccessTokenRelayInterceptor;
@@ -17,6 +18,7 @@ import com.bbd.securitycore.application.service.GetCurrentUserSnapshotService;
 import com.bbd.securitycore.domain.UserSnapshot;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.autoconfigure.AutoConfiguration;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnClass;
@@ -29,6 +31,7 @@ import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.core.annotation.Order;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
 import org.springframework.security.config.Customizer;
@@ -339,5 +342,25 @@ public class BbdSecurityAutoConfiguration {
             AuthorizeUserUseCase authorizeUserUseCase
     ) {
         return new RoleAuthorizationAspect(getCurrentUserSnapshotUseCase, authorizeUserUseCase);
+    }
+
+    /*
+     @Idempotent 멱등 빠른길 Aspect 를 등록한다(공통 멱등 표준 — docs/idempotency-spec.md).
+
+     각 MSA 는 변경 컨트롤러 메서드에 @Idempotent 만 붙이면 되고,
+     실제 Idempotency-Key 헤더 처리·Redis 빠른길·409 변환은 이 Aspect 가 수행한다.
+
+     StringRedisTemplate(=Redis 설정 존재) 이 있을 때만 등록된다. Redis 가 없으면 멱등 빠른길은 비활성(서비스의 DB UNIQUE 가 정확성 보루).
+     serviceName 은 Redis 키 네임스페이스(idem:{service}:...)에 쓰인다.
+     */
+    @Bean
+    @ConditionalOnBean(StringRedisTemplate.class)
+    @ConditionalOnMissingBean(IdempotencyAspect.class)
+    public IdempotencyAspect idempotencyAspect(
+            StringRedisTemplate stringRedisTemplate,
+            ExtractAuthenticatedUserPort extractAuthenticatedUserPort,
+            @Value("${spring.application.name:app}") String serviceName
+    ) {
+        return new IdempotencyAspect(stringRedisTemplate, extractAuthenticatedUserPort, serviceName);
     }
 }

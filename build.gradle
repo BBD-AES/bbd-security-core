@@ -35,6 +35,9 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-oauth2-resource-server'
     implementation 'org.springframework.boot:spring-boot-starter-restclient'
 
+    // 멱등 Aspect 가 Idempotency-Key 헤더를 읽기 위해(런타임엔 호스트 MSA 의 서블릿 컨테이너가 제공)
+    compileOnly 'jakarta.servlet:jakarta.servlet-api'
+
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
 
