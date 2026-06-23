@@ -23,6 +23,7 @@ public enum ErrorCode {
     USER_INACTIVE(HttpStatus.FORBIDDEN, "AUTH005", "비활성화된 사용자입니다."),
     USER_PENDING(HttpStatus.FORBIDDEN, "AUTH006", "승인 대기 중인 사용자입니다."),
     FORBIDDEN_ROLE(HttpStatus.FORBIDDEN, "AUTH007", "필요한 역할이 없습니다."),
+    USER_SERVICE_UNAVAILABLE(HttpStatus.SERVICE_UNAVAILABLE, "AUTH503", "사용자 서비스를 일시적으로 사용할 수 없습니다."),
 
     // 멱등(idempotency) — 공통 멱등 표준(docs/idempotency-spec.md)
     IDEMPOTENT_DUPLICATE(HttpStatus.CONFLICT, "IDEM409", "이미 처리된 요청입니다. (멱등 중복 차단)");
