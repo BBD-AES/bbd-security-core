@@ -2,7 +2,10 @@ package com.bbd.securitycore.adapter.out.http;
 
 import com.bbd.securitycore.application.port.out.LoadUserSnapshotPort;
 import com.bbd.securitycore.domain.UserSnapshot;
+import com.bbd.securitycore.global.error.BbdSecurityException;
+import com.bbd.securitycore.global.error.dto.ErrorCode;
 import org.springframework.web.client.HttpClientErrorException;
+import org.springframework.web.client.RestClientException;
 
 /*
  User Service에서 UserSnapshot을 조회하는 HTTP adapter.
@@ -31,8 +34,8 @@ public class UserServiceSnapshotAdapter implements LoadUserSnapshotPort {
      null 처리는 GetCurrentUserSnapshotService에서
      USER_SNAPSHOT_NOT_FOUND 예외로 변환한다.
 
-     그 외의 HTTP 오류, 네트워크 오류, 역직렬화 오류는
-     사용자 없음이 아니라 시스템 호출 실패이므로 그대로 전파한다.
+     User Service 5xx, 연결 실패, timeout, 응답 파싱 실패는
+     사용자 없음이 아니라 인가 의존성 일시 불가이므로 503으로 변환한다.
      */
     @Override
     public UserSnapshot loadByKeycloakSub(String keycloakSub) {
@@ -44,6 +47,10 @@ public class UserServiceSnapshotAdapter implements LoadUserSnapshotPort {
             return userSnapshotHttpClient.getUserSnapshot(keycloakSub);
         } catch (HttpClientErrorException.NotFound e) {
             return null;
+        } catch (HttpClientErrorException e) {
+            throw e;
+        } catch (RestClientException e) {
+            throw new BbdSecurityException(ErrorCode.USER_SERVICE_UNAVAILABLE, e);
         }
     }
 }

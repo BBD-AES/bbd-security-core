@@ -4,6 +4,7 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
+import java.time.Duration;
 import java.util.List;
 
 /*
@@ -80,5 +81,34 @@ public class BbdSecurityProperties {
      너무 짧으면 User Service 호출이 많아진다.
      */
     private long userSnapshotCacheTtlSeconds = 300;
+
+    /*
+     User Service Snapshot 조회 HTTP 호출 설정.
+
+     이 호출은 @RequireRole 인가 경로의 캐시 miss 시 동기적으로 실행되므로,
+     무한 대기로 요청 스레드가 고갈되지 않도록 보수적인 기본 timeout을 둔다.
+     */
+    private UserService userService = new UserService();
+
+    @Setter
+    @Getter
+    public static class UserService {
+
+        /*
+         User Service 연결 수립 timeout.
+
+         application.yml 예:
+         bbd.security.user-service.connect-timeout: 1s
+         */
+        private Duration connectTimeout = Duration.ofSeconds(1);
+
+        /*
+         User Service 응답 read timeout.
+
+         application.yml 예:
+         bbd.security.user-service.read-timeout: 3s
+         */
+        private Duration readTimeout = Duration.ofSeconds(3);
+    }
 
 }
