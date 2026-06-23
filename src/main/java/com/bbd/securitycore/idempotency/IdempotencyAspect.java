@@ -1,4 +1,4 @@
-package com.bbd.securitycore.adapter.in.aop;
+package com.bbd.securitycore.idempotency;
 
 import com.bbd.securitycore.application.port.out.ExtractAuthenticatedUserPort;
 import com.bbd.securitycore.global.error.ApiException;
@@ -46,8 +46,8 @@ public class IdempotencyAspect {
         this.serviceName = serviceName;
     }
 
-    @Around("@annotation(com.bbd.securitycore.adapter.in.annotation.Idempotent) || "
-            + "@within(com.bbd.securitycore.adapter.in.annotation.Idempotent)")
+    @Around("@annotation(com.bbd.securitycore.idempotency.Idempotent) || "
+            + "@within(com.bbd.securitycore.idempotency.Idempotent)")
     public Object apply(ProceedingJoinPoint joinPoint) throws Throwable {
         String key = header();
         if (key == null || key.isBlank()) {

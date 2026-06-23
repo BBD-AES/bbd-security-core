@@ -1,7 +1,7 @@
 package com.bbd.securitycore.config;
 
-import com.bbd.securitycore.adapter.in.aop.IdempotencyAspect;
 import com.bbd.securitycore.adapter.in.aop.RoleAuthorizationAspect;
+import com.bbd.securitycore.idempotency.IdempotencyAspect;
 import com.bbd.securitycore.adapter.in.security.SpringSecurityAuthenticatedUserAdapter;
 import com.bbd.securitycore.adapter.out.http.SecurityContextAccessTokenRelayInterceptor;
 import com.bbd.securitycore.adapter.out.http.UserServiceSnapshotAdapter;

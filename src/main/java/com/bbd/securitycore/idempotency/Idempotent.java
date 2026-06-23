@@ -1,4 +1,4 @@
-package com.bbd.securitycore.adapter.in.annotation;
+package com.bbd.securitycore.idempotency;
 
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
