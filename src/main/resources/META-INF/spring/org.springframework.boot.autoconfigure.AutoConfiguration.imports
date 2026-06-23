@@ -1,1 +1,2 @@
 com.bbd.securitycore.config.BbdSecurityAutoConfiguration
+com.bbd.securitycore.config.IdempotencyOpenApiAutoConfiguration
