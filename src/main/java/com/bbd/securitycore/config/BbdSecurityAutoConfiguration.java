@@ -26,6 +26,8 @@ import org.springframework.boot.autoconfigure.condition.ConditionalOnMissingBean
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.boot.data.redis.autoconfigure.DataRedisAutoConfiguration;
+import org.springframework.boot.http.client.ClientHttpRequestFactoryBuilder;
+import org.springframework.boot.http.client.HttpClientSettings;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.EnableAspectJAutoProxy;
 import org.springframework.core.annotation.Order;
@@ -34,6 +36,7 @@ import org.springframework.data.redis.core.RedisTemplate;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.serializer.JacksonJsonRedisSerializer;
 import org.springframework.data.redis.serializer.StringRedisSerializer;
+import org.springframework.http.client.ClientHttpRequestFactory;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.config.annotation.web.configurers.AbstractHttpConfigurer;
@@ -83,10 +86,12 @@ import tools.jackson.databind.ObjectMapper;
 // @RequireRole은 필터가 아니라 AOP라서 이 설정이 필요
 @EnableAspectJAutoProxy(proxyTargetClass = true)
 @ImportHttpServices(
-        group = "bbd-user-service",
+        group = BbdSecurityAutoConfiguration.USER_SERVICE_GROUP,
         types = UserSnapshotHttpClient.class
 )
 public class BbdSecurityAutoConfiguration {
+
+    static final String USER_SERVICE_GROUP = "bbd-user-service";
 
     /*
      각 MSA에 기본 SecurityFilterChain을 등록한다.
@@ -248,13 +253,46 @@ public class BbdSecurityAutoConfiguration {
     */
     @Bean
     @ConditionalOnMissingBean(name = "bbdAccessTokenRelayHttpServiceGroupConfigurer")
-    public RestClientHttpServiceGroupConfigurer bbdAccessTokenRelayHttpServiceGroupConfigurer() {
-        return groups -> groups
-                .forEachClient((group, clientBuilder) -> clientBuilder
-                        .requestInterceptors(interceptors ->
-                                interceptors.add(new SecurityContextAccessTokenRelayInterceptor())
-                        )
-                );
+    public RestClientHttpServiceGroupConfigurer bbdAccessTokenRelayHttpServiceGroupConfigurer(
+            BbdSecurityProperties properties,
+            ObjectProvider<ClientHttpRequestFactoryBuilder<?>> requestFactoryBuilderProvider,
+            ObjectProvider<HttpClientSettings> httpClientSettingsProvider
+    ) {
+        ClientHttpRequestFactoryBuilder<?> requestFactoryBuilder =
+                requestFactoryBuilderProvider.getIfAvailable(ClientHttpRequestFactoryBuilder::detect);
+        HttpClientSettings baseHttpClientSettings =
+                httpClientSettingsProvider.getIfAvailable(HttpClientSettings::defaults);
+
+        return groups -> {
+            groups.forEachClient((group, clientBuilder) -> clientBuilder
+                    .requestInterceptors(interceptors ->
+                            interceptors.add(new SecurityContextAccessTokenRelayInterceptor())
+                    )
+            );
+
+            groups.filterByName(USER_SERVICE_GROUP)
+                    .forEachClient((group, clientBuilder) -> clientBuilder
+                            .requestFactory(userServiceClientHttpRequestFactory(
+                                    properties,
+                                    requestFactoryBuilder,
+                                    baseHttpClientSettings
+                            ))
+                    );
+        };
+    }
+
+    private ClientHttpRequestFactory userServiceClientHttpRequestFactory(
+            BbdSecurityProperties properties,
+            ClientHttpRequestFactoryBuilder<?> requestFactoryBuilder,
+            HttpClientSettings baseHttpClientSettings
+    ) {
+        BbdSecurityProperties.UserService userService = properties.getUserService();
+        HttpClientSettings userServiceSettings = baseHttpClientSettings.withTimeouts(
+                userService.getConnectTimeout(),
+                userService.getReadTimeout()
+        );
+
+        return requestFactoryBuilder.build(userServiceSettings);
     }
 
 
