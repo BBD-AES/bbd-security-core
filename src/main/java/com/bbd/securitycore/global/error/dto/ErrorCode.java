@@ -8,15 +8,8 @@ import org.springframework.http.HttpStatus;
 @AllArgsConstructor
 public enum ErrorCode {
 
-    // 공통 에러
-    VALIDATION_ERROR(HttpStatus.BAD_REQUEST, "COMMON001", "입력값이 올바르지 않습니다."),
-    RESOURCE_NOT_FOUND(HttpStatus.NOT_FOUND, "COMMON404", "요청한 자원을 찾을 수 없습니다."),
-    INTERNAL_ERROR(HttpStatus.INTERNAL_SERVER_ERROR, "COMMON500", "서버 내부 오류가 발생했습니다."),
-
     // 인증/인가 에러
     AUTH_UNAUTHENTICATED(HttpStatus.UNAUTHORIZED, "AUTH001", "인증이 필요합니다."),
-    AUTH_TOKEN_EXPIRED(HttpStatus.UNAUTHORIZED, "AUTH002", "토큰이 만료되었습니다."),
-    AUTH_FORBIDDEN(HttpStatus.FORBIDDEN, "AUTH003", "권한이 없습니다."),
 
     // UserSnapshot 기반 인가 에러
     USER_SNAPSHOT_NOT_FOUND(HttpStatus.UNAUTHORIZED, "AUTH004", "사용자 스냅샷을 찾을 수 없습니다."),

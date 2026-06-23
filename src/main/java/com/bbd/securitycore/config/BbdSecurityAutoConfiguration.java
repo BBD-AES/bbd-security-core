@@ -16,6 +16,7 @@ import com.bbd.securitycore.application.port.out.SaveUserSnapshotCachePort;
 import com.bbd.securitycore.application.service.AuthorizeUserService;
 import com.bbd.securitycore.application.service.GetCurrentUserSnapshotService;
 import com.bbd.securitycore.domain.UserSnapshot;
+import com.bbd.securitycore.global.error.BbdSecurityExceptionHandler;
 import org.springframework.beans.factory.ObjectProvider;
 import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.beans.factory.annotation.Value;
@@ -92,6 +93,13 @@ import tools.jackson.databind.ObjectMapper;
 public class BbdSecurityAutoConfiguration {
 
     static final String USER_SERVICE_GROUP = "bbd-user-service";
+
+    @Bean
+    @ConditionalOnClass(name = "org.springframework.web.servlet.DispatcherServlet")
+    @ConditionalOnMissingBean(BbdSecurityExceptionHandler.class)
+    public BbdSecurityExceptionHandler bbdSecurityExceptionHandler() {
+        return new BbdSecurityExceptionHandler();
+    }
 
     /*
      각 MSA에 기본 SecurityFilterChain을 등록한다.
