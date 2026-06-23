@@ -8,6 +8,7 @@ import com.bbd.securitycore.domain.UserRole;
 import com.bbd.securitycore.domain.UserSnapshot;
 import com.bbd.securitycore.global.error.ApiException;
 import com.bbd.securitycore.global.error.dto.ErrorCode;
+import lombok.extern.slf4j.Slf4j;
 import org.aspectj.lang.JoinPoint;
 import org.aspectj.lang.annotation.Aspect;
 import org.aspectj.lang.annotation.Before;
@@ -32,6 +33,7 @@ import java.util.Arrays;
  메서드에 @RequireRole이 있으면 메서드 설정을 우선 사용하고,
  없으면 클래스에 붙은 @RequireRole을 사용한다.
  */
+@Slf4j
 @Aspect
 public class RoleAuthorizationAspect {
 
@@ -64,8 +66,22 @@ public class RoleAuthorizationAspect {
 
         UserSnapshot userSnapshot = result == null ? null : result.toDomain();
 
-        authorizeUserUseCase.requireActive(userSnapshot);
-        validateRoles(userSnapshot, requireRole.value());
+        try {
+            authorizeUserUseCase.requireActive(userSnapshot);
+        } catch (ApiException exception) {
+            log.warn(
+                    "인가 실패: 사용자 상태가 요청 처리 조건을 만족하지 않습니다. errorCode={}, target={}, userId={}, status={}, role={}, requiredRoles={}",
+                    exception.getErrorCode().getCode(),
+                    authorizationTarget(joinPoint),
+                    userId(userSnapshot),
+                    status(userSnapshot),
+                    role(userSnapshot),
+                    roles(requireRole.value())
+            );
+            throw exception;
+        }
+
+        validateRoles(userSnapshot, requireRole.value(), joinPoint);
     }
 
     /*
@@ -101,8 +117,15 @@ public class RoleAuthorizationAspect {
     /*
      지정된 role 중 하나라도 일치하면 통과한다.
      */
-    private void validateRoles(UserSnapshot userSnapshot, UserRole[] requiredRoles) {
+    private void validateRoles(UserSnapshot userSnapshot, UserRole[] requiredRoles, JoinPoint joinPoint) {
         if (requiredRoles == null || requiredRoles.length == 0) {
+            log.warn(
+                    "인가 실패: @RequireRole에 허용 role이 비어 있습니다. target={}, userId={}, status={}, role={}",
+                    authorizationTarget(joinPoint),
+                    userId(userSnapshot),
+                    status(userSnapshot),
+                    role(userSnapshot)
+            );
             throw new ApiException(ErrorCode.FORBIDDEN_ROLE);
         }
 
@@ -110,7 +133,44 @@ public class RoleAuthorizationAspect {
                 .anyMatch(userSnapshot::hasRole);
 
         if (!matched) {
+            log.warn(
+                    "인가 실패: 사용자 role이 요구 role과 일치하지 않습니다. target={}, userId={}, status={}, role={}, requiredRoles={}",
+                    authorizationTarget(joinPoint),
+                    userId(userSnapshot),
+                    status(userSnapshot),
+                    role(userSnapshot),
+                    roles(requiredRoles)
+            );
             throw new ApiException(ErrorCode.FORBIDDEN_ROLE);
         }
+
+        log.debug(
+                "인가 성공: @RequireRole 검사를 통과했습니다. target={}, userId={}, status={}, role={}, requiredRoles={}",
+                authorizationTarget(joinPoint),
+                userId(userSnapshot),
+                status(userSnapshot),
+                role(userSnapshot),
+                roles(requiredRoles)
+        );
+    }
+
+    private String authorizationTarget(JoinPoint joinPoint) {
+        return joinPoint.getSignature().toShortString();
+    }
+
+    private String roles(UserRole[] roles) {
+        return Arrays.toString(roles);
+    }
+
+    private Long userId(UserSnapshot userSnapshot) {
+        return userSnapshot == null ? null : userSnapshot.userId();
+    }
+
+    private Object status(UserSnapshot userSnapshot) {
+        return userSnapshot == null ? null : userSnapshot.status();
+    }
+
+    private Object role(UserSnapshot userSnapshot) {
+        return userSnapshot == null ? null : userSnapshot.role();
     }
 }

@@ -9,6 +9,7 @@ import com.bbd.securitycore.application.port.out.SaveUserSnapshotCachePort;
 import com.bbd.securitycore.domain.UserSnapshot;
 import com.bbd.securitycore.global.error.ApiException;
 import com.bbd.securitycore.global.error.dto.ErrorCode;
+import com.bbd.securitycore.global.logging.SecurityLogUtils;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 
@@ -53,6 +54,7 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
         String keycloakSub = extractAuthenticatedUserPort.getCurrentKeycloakSub();
 
         if (keycloakSub == null || keycloakSub.isBlank()) {
+            log.warn("UserSnapshot 조회 실패: 현재 인증 사용자의 keycloakSub가 없습니다.");
             throw new ApiException(ErrorCode.AUTH_UNAUTHENTICATED);
         }
 
@@ -62,6 +64,10 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
             snapshot = loadFromCache(keycloakSub)
                     .orElseGet(() -> loadFromUserServiceAndCache(keycloakSub));
         } else {
+            log.debug(
+                    "UserSnapshot 캐시 포트가 없어 User Service 원본 조회를 수행합니다. keycloakSubHash={}",
+                    keycloakSubHash(keycloakSub)
+            );
             snapshot = loadFromUserServiceAndCache(keycloakSub);
         }
 
@@ -76,11 +82,29 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
      */
     private Optional<UserSnapshot> loadFromCache(String keycloakSub) {
         try {
-            return loadUserSnapshotCachePort.findByKeycloakSub(keycloakSub);
+            Optional<UserSnapshot> cachedSnapshot = loadUserSnapshotCachePort.findByKeycloakSub(keycloakSub);
+
+            if (cachedSnapshot.isPresent()) {
+                UserSnapshot snapshot = cachedSnapshot.get();
+                log.debug(
+                        "UserSnapshot 캐시 hit. keycloakSubHash={}, userId={}, status={}, role={}",
+                        keycloakSubHash(keycloakSub),
+                        snapshot.userId(),
+                        snapshot.status(),
+                        snapshot.role()
+                );
+            } else {
+                log.debug(
+                        "UserSnapshot 캐시 miss. User Service 원본 조회로 fallback합니다. keycloakSubHash={}",
+                        keycloakSubHash(keycloakSub)
+                );
+            }
+
+            return cachedSnapshot;
         } catch (RuntimeException exception) {
             log.warn(
-                    "UserSnapshot 캐시 조회에 실패했습니다. User Service 원본 조회로 fallback합니다. keycloakSub={}",
-                    keycloakSub,
+                    "UserSnapshot 캐시 조회에 실패했습니다. User Service 원본 조회로 fallback합니다. keycloakSubHash={}",
+                    keycloakSubHash(keycloakSub),
                     exception
             );
             return Optional.empty();
@@ -98,14 +122,37 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
      정상적으로 조회된 UserSnapshot을 이후 요청에서 재사용할 수 있도록 저장한다.
      */
     private UserSnapshot loadFromUserServiceAndCache(String keycloakSub) {
+        log.debug(
+                "UserSnapshot을 User Service에서 조회합니다. keycloakSubHash={}",
+                keycloakSubHash(keycloakSub)
+        );
+
         UserSnapshot snapshot = loadUserSnapshotPort.loadByKeycloakSub(keycloakSub);
 
         if (snapshot == null) {
+            log.warn(
+                    "UserSnapshot 조회 실패: User Service에서 사용자를 찾지 못했습니다. keycloakSubHash={}",
+                    keycloakSubHash(keycloakSub)
+            );
             throw new ApiException(ErrorCode.USER_SNAPSHOT_NOT_FOUND);
         }
 
+        log.debug(
+                "UserSnapshot User Service 조회 성공. keycloakSubHash={}, userId={}, status={}, role={}",
+                keycloakSubHash(keycloakSub),
+                snapshot.userId(),
+                snapshot.status(),
+                snapshot.role()
+        );
+
         if (saveUserSnapshotCachePort != null) {
             saveToCache(snapshot);
+        } else {
+            log.debug(
+                    "UserSnapshot 캐시 저장 포트가 없어 저장을 건너뜁니다. keycloakSubHash={}, userId={}",
+                    keycloakSubHash(keycloakSub),
+                    snapshot.userId()
+            );
         }
 
         return snapshot;
@@ -121,10 +168,15 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
             saveUserSnapshotCachePort.save(snapshot);
         } catch (RuntimeException exception) {
             log.warn(
-                    "UserSnapshot 캐시 저장에 실패했습니다. 현재 요청은 User Service 조회 결과로 계속 처리합니다. keycloakSub={}",
-                    snapshot.keycloakSub(),
+                    "UserSnapshot 캐시 저장에 실패했습니다. 현재 요청은 User Service 조회 결과로 계속 처리합니다. keycloakSubHash={}, userId={}",
+                    keycloakSubHash(snapshot.keycloakSub()),
+                    snapshot.userId(),
                     exception
             );
         }
+    }
+
+    private String keycloakSubHash(String keycloakSub) {
+        return SecurityLogUtils.fingerprint(keycloakSub);
     }
 }
