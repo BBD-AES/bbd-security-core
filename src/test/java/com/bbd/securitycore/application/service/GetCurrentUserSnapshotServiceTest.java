@@ -9,18 +9,97 @@ import com.bbd.securitycore.domain.TenancyType;
 import com.bbd.securitycore.domain.UserRole;
 import com.bbd.securitycore.domain.UserSnapshot;
 import com.bbd.securitycore.domain.UserStatus;
+import com.bbd.securitycore.global.error.ApiException;
+import com.bbd.securitycore.global.error.dto.ErrorCode;
 import org.junit.jupiter.api.Test;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /*
  UserSnapshot 캐시 장애 시 원본 User Service fallback 규칙을 검증한다.
  */
 class GetCurrentUserSnapshotServiceTest {
+
+    @Test
+    void throwsUnauthenticatedWhenKeycloakSubIsBlank() {
+        GetCurrentUserSnapshotService service = new GetCurrentUserSnapshotService(
+                () -> " ",
+                keycloakSub -> Optional.empty(),
+                keycloakSub -> snapshot(keycloakSub),
+                snapshot -> {
+                }
+        );
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                service::getCurrentUserSnapshot
+        );
+
+        assertEquals(ErrorCode.AUTH_UNAUTHENTICATED, exception.getErrorCode());
+    }
+
+    @Test
+    void loadsFromUserServiceAndSavesCacheWhenCacheMisses() {
+        RecordingUserSnapshotPort userServicePort =
+                new RecordingUserSnapshotPort(snapshot("keycloak-sub"));
+        RecordingSaveCachePort saveCachePort = new RecordingSaveCachePort(false);
+
+        GetCurrentUserSnapshotService service = new GetCurrentUserSnapshotService(
+                () -> "keycloak-sub",
+                keycloakSub -> Optional.empty(),
+                userServicePort,
+                saveCachePort
+        );
+
+        CurrentUserSnapshotResult result = service.getCurrentUserSnapshot();
+
+        assertTrue(userServicePort.called);
+        assertTrue(saveCachePort.called);
+        assertEquals("keycloak-sub", result.keycloakSub());
+    }
+
+    @Test
+    void loadsFromUserServiceWhenCachePortIsMissing() {
+        RecordingUserSnapshotPort userServicePort =
+                new RecordingUserSnapshotPort(snapshot("keycloak-sub"));
+        RecordingSaveCachePort saveCachePort = new RecordingSaveCachePort(false);
+
+        GetCurrentUserSnapshotService service = new GetCurrentUserSnapshotService(
+                () -> "keycloak-sub",
+                null,
+                userServicePort,
+                saveCachePort
+        );
+
+        CurrentUserSnapshotResult result = service.getCurrentUserSnapshot();
+
+        assertTrue(userServicePort.called);
+        assertTrue(saveCachePort.called);
+        assertEquals("keycloak-sub", result.keycloakSub());
+    }
+
+    @Test
+    void throwsUserSnapshotNotFoundWhenUserServiceReturnsNull() {
+        GetCurrentUserSnapshotService service = new GetCurrentUserSnapshotService(
+                () -> "keycloak-sub",
+                keycloakSub -> Optional.empty(),
+                keycloakSub -> null,
+                snapshot -> {
+                }
+        );
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                service::getCurrentUserSnapshot
+        );
+
+        assertEquals(ErrorCode.USER_SNAPSHOT_NOT_FOUND, exception.getErrorCode());
+    }
 
     @Test
     void fallsBackToUserServiceWhenCacheLookupFails() {
