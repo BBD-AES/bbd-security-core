@@ -6,7 +6,7 @@ plugins {
 // 이름 변경: bbd-security-core → bbd-platform-core (보안만이 아니라 보안·Redis·AOP·토큰릴레이·멱등을 묶은 플랫폼 스타터).
 // (GitHub 레포명/자바 패키지 com.bbd.securitycore.* 풀rename 은 후속 — 이번엔 아티팩트 좌표만 변경)
 group = 'com.bbd'
-version = '0.0.7'
+version = '0.0.8'
 
 java {
     toolchain {
@@ -38,6 +38,11 @@ dependencies {
 
     // 멱등 Aspect 가 Idempotency-Key 헤더를 읽기 위해(런타임엔 호스트 MSA 의 서블릿 컨테이너가 제공)
     compileOnly 'jakarta.servlet:jakarta.servlet-api'
+
+    // @Idempotent 엔드포인트에 Idempotency-Key 헤더를 OpenAPI(Swagger)에 노출하기 위한 OperationCustomizer.
+    // compileOnly — springdoc 을 쓰는(Swagger 노출하는) 소비 MSA 만 런타임에 제공, 안 쓰면 자동설정이 @ConditionalOnClass 로 비활성.
+    compileOnly 'org.springdoc:springdoc-openapi-starter-common:3.0.3'
+    testImplementation 'org.springdoc:springdoc-openapi-starter-common:3.0.3'
 
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'
