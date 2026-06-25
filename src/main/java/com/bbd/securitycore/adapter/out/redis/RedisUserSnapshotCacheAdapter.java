@@ -7,6 +7,7 @@ import com.bbd.securitycore.domain.UserSnapshot;
 import com.bbd.securitycore.global.logging.SecurityLogUtils;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
+import org.springframework.data.redis.core.StringRedisTemplate;
 
 import java.time.Duration;
 import java.util.Optional;
@@ -25,14 +26,26 @@ import java.util.Optional;
 @Slf4j
 public class RedisUserSnapshotCacheAdapter implements LoadUserSnapshotCachePort, SaveUserSnapshotCachePort {
 
+    private static final String NOT_FOUND_MARKER = "1";
+
     private final RedisTemplate<String, UserSnapshot> redisTemplate;
+    private final StringRedisTemplate stringRedisTemplate;
     private final BbdSecurityProperties properties;
 
     public RedisUserSnapshotCacheAdapter(
             RedisTemplate<String, UserSnapshot> redisTemplate,
             BbdSecurityProperties properties
     ) {
+        this(redisTemplate, null, properties);
+    }
+
+    public RedisUserSnapshotCacheAdapter(
+            RedisTemplate<String, UserSnapshot> redisTemplate,
+            StringRedisTemplate stringRedisTemplate,
+            BbdSecurityProperties properties
+    ) {
         this.redisTemplate = redisTemplate;
+        this.stringRedisTemplate = stringRedisTemplate;
         this.properties = properties;
     }
 
@@ -51,6 +64,15 @@ public class RedisUserSnapshotCacheAdapter implements LoadUserSnapshotCachePort,
         UserSnapshot userSnapshot = redisTemplate.opsForValue().get(toKey(keycloakSub));
 
         return Optional.ofNullable(userSnapshot);
+    }
+
+    @Override
+    public boolean isNotFoundCached(String keycloakSub) {
+        if (keycloakSub == null || keycloakSub.isBlank() || stringRedisTemplate == null) {
+            return false;
+        }
+
+        return Boolean.TRUE.equals(stringRedisTemplate.hasKey(toNotFoundKey(keycloakSub)));
     }
 
     /*
@@ -76,9 +98,41 @@ public class RedisUserSnapshotCacheAdapter implements LoadUserSnapshotCachePort,
                 userSnapshot.userId(),
                 properties.getUserSnapshotCacheTtlSeconds()
         );
+
+        deleteNotFound(userSnapshot.keycloakSub());
+    }
+
+    @Override
+    public void saveNotFound(String keycloakSub) {
+        if (keycloakSub == null || keycloakSub.isBlank() || stringRedisTemplate == null) {
+            return;
+        }
+
+        stringRedisTemplate.opsForValue().set(
+                toNotFoundKey(keycloakSub),
+                NOT_FOUND_MARKER,
+                Duration.ofSeconds(properties.getUserSnapshotNotFoundCacheTtlSeconds())
+        );
+        log.debug(
+                "UserSnapshot NOT_FOUND 음수 캐시 저장 성공. keycloakSubHash={}, ttlSeconds={}",
+                SecurityLogUtils.fingerprint(keycloakSub),
+                properties.getUserSnapshotNotFoundCacheTtlSeconds()
+        );
     }
 
     private String toKey(String keycloakSub) {
         return properties.getUserSnapshotCacheKeyPrefix() + keycloakSub;
+    }
+
+    private String toNotFoundKey(String keycloakSub) {
+        return properties.getUserSnapshotNotFoundCacheKeyPrefix() + keycloakSub;
+    }
+
+    private void deleteNotFound(String keycloakSub) {
+        if (keycloakSub == null || keycloakSub.isBlank() || stringRedisTemplate == null) {
+            return;
+        }
+
+        stringRedisTemplate.delete(toNotFoundKey(keycloakSub));
     }
 }

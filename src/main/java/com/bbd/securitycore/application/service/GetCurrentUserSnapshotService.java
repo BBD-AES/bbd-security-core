@@ -93,14 +93,25 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
                         snapshot.status(),
                         snapshot.role()
                 );
-            } else {
-                log.debug(
-                        "UserSnapshot 캐시 miss. User Service 원본 조회로 fallback합니다. keycloakSubHash={}",
-                        keycloakSubHash(keycloakSub)
-                );
+                return cachedSnapshot;
             }
 
-            return cachedSnapshot;
+            if (loadUserSnapshotCachePort.isNotFoundCached(keycloakSub)) {
+                log.debug(
+                        "UserSnapshot NOT_FOUND 음수 캐시 hit. User Service 조회를 건너뜁니다. keycloakSubHash={}",
+                        keycloakSubHash(keycloakSub)
+                );
+                throw new ApiException(ErrorCode.USER_SNAPSHOT_NOT_FOUND);
+            }
+
+            log.debug(
+                    "UserSnapshot 캐시 miss. User Service 원본 조회로 fallback합니다. keycloakSubHash={}",
+                    keycloakSubHash(keycloakSub)
+            );
+
+            return Optional.empty();
+        } catch (ApiException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
             log.warn(
                     "UserSnapshot 캐시 조회에 실패했습니다. User Service 원본 조회로 fallback합니다. keycloakSubHash={}",
@@ -134,6 +145,7 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
                     "UserSnapshot 조회 실패: User Service에서 사용자를 찾지 못했습니다. keycloakSubHash={}",
                     keycloakSubHash(keycloakSub)
             );
+            saveNotFoundToCache(keycloakSub);
             throw new ApiException(ErrorCode.USER_SNAPSHOT_NOT_FOUND);
         }
 
@@ -171,6 +183,26 @@ public class GetCurrentUserSnapshotService implements GetCurrentUserSnapshotUseC
                     "UserSnapshot 캐시 저장에 실패했습니다. 현재 요청은 User Service 조회 결과로 계속 처리합니다. keycloakSubHash={}, userId={}",
                     keycloakSubHash(snapshot.keycloakSub()),
                     snapshot.userId(),
+                    exception
+            );
+        }
+    }
+
+    private void saveNotFoundToCache(String keycloakSub) {
+        if (saveUserSnapshotCachePort == null) {
+            log.debug(
+                    "UserSnapshot NOT_FOUND 음수 캐시 저장 포트가 없어 저장을 건너뜁니다. keycloakSubHash={}",
+                    keycloakSubHash(keycloakSub)
+            );
+            return;
+        }
+
+        try {
+            saveUserSnapshotCachePort.saveNotFound(keycloakSub);
+        } catch (RuntimeException exception) {
+            log.warn(
+                    "UserSnapshot NOT_FOUND 음수 캐시 저장에 실패했습니다. 기존 USER_SNAPSHOT_NOT_FOUND 응답은 유지합니다. keycloakSubHash={}",
+                    keycloakSubHash(keycloakSub),
                     exception
             );
         }

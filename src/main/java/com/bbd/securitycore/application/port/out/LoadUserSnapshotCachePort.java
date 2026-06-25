@@ -22,4 +22,13 @@ public interface LoadUserSnapshotCachePort {
      원본 사용자 스냅샷을 다시 가져올 수 있다.
      */
     Optional<UserSnapshot> findByKeycloakSub(String keycloakSub);
+
+    /*
+     keycloakSub에 해당하는 사용자가 없다는 NOT_FOUND 결과가 캐시에 있는지 조회한다.
+
+     기본 구현은 false를 반환해 기존 커스텀 구현체와의 호환성을 유지한다.
+     */
+    default boolean isNotFoundCached(String keycloakSub) {
+        return false;
+    }
 }

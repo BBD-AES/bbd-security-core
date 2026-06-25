@@ -85,10 +85,35 @@ class GetCurrentUserSnapshotServiceTest {
 
     @Test
     void throwsUserSnapshotNotFoundWhenUserServiceReturnsNull() {
+        RecordingSaveCachePort saveCachePort = new RecordingSaveCachePort(false);
+
         GetCurrentUserSnapshotService service = new GetCurrentUserSnapshotService(
                 () -> "keycloak-sub",
                 keycloakSub -> Optional.empty(),
                 keycloakSub -> null,
+                saveCachePort
+        );
+
+        ApiException exception = assertThrows(
+                ApiException.class,
+                service::getCurrentUserSnapshot
+        );
+
+        assertEquals(ErrorCode.USER_SNAPSHOT_NOT_FOUND, exception.getErrorCode());
+        assertTrue(saveCachePort.notFoundCalled);
+        assertEquals("keycloak-sub", saveCachePort.notFoundKeycloakSub);
+    }
+
+    @Test
+    void skipsUserServiceWhenNotFoundCacheHits() {
+        NotFoundCachedPort cachePort = new NotFoundCachedPort();
+        RecordingUserSnapshotPort userServicePort =
+                new RecordingUserSnapshotPort(snapshot("keycloak-sub"));
+
+        GetCurrentUserSnapshotService service = new GetCurrentUserSnapshotService(
+                () -> "keycloak-sub",
+                cachePort,
+                userServicePort,
                 snapshot -> {
                 }
         );
@@ -99,6 +124,9 @@ class GetCurrentUserSnapshotServiceTest {
         );
 
         assertEquals(ErrorCode.USER_SNAPSHOT_NOT_FOUND, exception.getErrorCode());
+        assertTrue(cachePort.findCalled);
+        assertTrue(cachePort.notFoundCalled);
+        assertFalse(userServicePort.called);
     }
 
     @Test
@@ -189,6 +217,24 @@ class GetCurrentUserSnapshotServiceTest {
         }
     }
 
+    private static class NotFoundCachedPort implements LoadUserSnapshotCachePort {
+
+        private boolean findCalled;
+        private boolean notFoundCalled;
+
+        @Override
+        public Optional<UserSnapshot> findByKeycloakSub(String keycloakSub) {
+            findCalled = true;
+            return Optional.empty();
+        }
+
+        @Override
+        public boolean isNotFoundCached(String keycloakSub) {
+            notFoundCalled = true;
+            return true;
+        }
+    }
+
     private static class RecordingUserSnapshotPort implements LoadUserSnapshotPort {
 
         private final UserSnapshot snapshot;
@@ -209,6 +255,8 @@ class GetCurrentUserSnapshotServiceTest {
 
         private final boolean fail;
         private boolean called;
+        private boolean notFoundCalled;
+        private String notFoundKeycloakSub;
 
         private RecordingSaveCachePort(boolean fail) {
             this.fail = fail;
@@ -217,6 +265,15 @@ class GetCurrentUserSnapshotServiceTest {
         @Override
         public void save(UserSnapshot snapshot) {
             called = true;
+            if (fail) {
+                throw new IllegalStateException("Redis unavailable");
+            }
+        }
+
+        @Override
+        public void saveNotFound(String keycloakSub) {
+            notFoundCalled = true;
+            notFoundKeycloakSub = keycloakSub;
             if (fail) {
                 throw new IllegalStateException("Redis unavailable");
             }

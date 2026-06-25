@@ -235,9 +235,10 @@ public class BbdSecurityAutoConfiguration {
     })
     public RedisUserSnapshotCacheAdapter redisUserSnapshotCacheAdapter(
             @Qualifier("userSnapshotRedisTemplate") RedisTemplate<String, UserSnapshot> redisTemplate,
+            ObjectProvider<StringRedisTemplate> stringRedisTemplate,
             BbdSecurityProperties properties
     ) {
-        return new RedisUserSnapshotCacheAdapter(redisTemplate, properties);
+        return new RedisUserSnapshotCacheAdapter(redisTemplate, stringRedisTemplate.getIfAvailable(), properties);
     }
 
 

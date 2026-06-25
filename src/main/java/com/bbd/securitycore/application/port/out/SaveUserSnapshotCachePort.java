@@ -21,4 +21,12 @@ public interface SaveUserSnapshotCachePort {
      - TTL: 서비스 정책에 따른 만료 시간
      */
     void save(UserSnapshot snapshot);
+
+    /*
+     keycloakSub에 해당하는 사용자가 없다는 NOT_FOUND 결과를 짧게 캐싱한다.
+
+     기본 구현은 아무 것도 하지 않아 기존 커스텀 구현체와의 호환성을 유지한다.
+     */
+    default void saveNotFound(String keycloakSub) {
+    }
 }

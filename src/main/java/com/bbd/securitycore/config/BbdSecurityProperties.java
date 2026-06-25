@@ -83,6 +83,22 @@ public class BbdSecurityProperties {
     private long userSnapshotCacheTtlSeconds = 300;
 
     /*
+     UserSnapshot NOT_FOUND 음수 캐시 key prefix.
+
+     실제 Redis key 예:
+     user:snapshot:not-found:{keycloakSub}
+     */
+    private String userSnapshotNotFoundCacheKeyPrefix = "user:snapshot:not-found:";
+
+    /*
+     UserSnapshot NOT_FOUND 음수 캐시 TTL.
+
+     존재하지 않는 keycloakSub 반복 요청이 User Service로 계속 전달되는 것을 줄이되,
+     사용자 생성/복구/매핑 반영이 너무 오래 막히지 않도록 짧게 둔다.
+     */
+    private long userSnapshotNotFoundCacheTtlSeconds = 30;
+
+    /*
      User Service Snapshot 조회 HTTP 호출 설정.
 
      이 호출은 @RequireRole 인가 경로의 캐시 miss 시 동기적으로 실행되므로,
